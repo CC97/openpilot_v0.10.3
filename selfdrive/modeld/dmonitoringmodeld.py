@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import os
 from openpilot.system.hardware import TICI
-os.environ['DEV'] = 'QCOM' if TICI else 'CPU'
+if "DEV" not in os.environ:
+  os.environ['DEV'] = 'QCOM' if TICI else ('CUDA' if os.path.exists("/dev/nvidiactl") else 'CPU')
 from tinygrad.tensor import Tensor
 from tinygrad.dtype import dtypes
 import time

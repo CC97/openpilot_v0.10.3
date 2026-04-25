@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import os
 from openpilot.system.hardware import TICI
-os.environ['DEV'] = 'QCOM' if TICI else 'CPU'
+if "DEV" not in os.environ:
+  os.environ['DEV'] = 'QCOM' if TICI else ('CUDA' if os.path.exists("/dev/nvidiactl") else 'CPU')
 USBGPU = "USBGPU" in os.environ
 if USBGPU:
   os.environ['DEV'] = 'AMD'

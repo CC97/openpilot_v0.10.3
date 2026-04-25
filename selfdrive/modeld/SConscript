@@ -49,10 +49,12 @@ def tg_compile(flags, model_name):
 
 # Compile small models
 for model_name in ['driving_vision', 'driving_policy', 'dmonitoring_model']:
+  modeld_tg_dev = os.getenv("MODELD_TINYGRAD_DEV", "").strip().upper()
+  default_pc_flags = f'DEV={modeld_tg_dev}' if modeld_tg_dev else ('DEV=CUDA' if os.path.exists("/dev/nvidiactl") else 'DEV=CPU CPU_LLVM=1')
   flags = {
     'larch64': 'DEV=QCOM FLOAT16=1 NOLOCALS=1 IMAGE=2 JIT_BATCH_SIZE=0',
     'Darwin': f'DEV=CPU HOME={os.path.expanduser("~")}', # tinygrad calls brew which needs a $HOME in the env
-  }.get(arch, 'DEV=CPU CPU_LLVM=1')
+  }.get(arch, default_pc_flags)
   tg_compile(flags, model_name)
 
 # Compile BIG model if USB GPU is available
