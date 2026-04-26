@@ -18,7 +18,7 @@ if map_region_size is not None:
   TerrainProperty.map_region_size = map_region_size
 ```
 
-Use a larger value, such as `2048`, if a larger generated/culling region is needed.
+MetaDrive's road network can be longer than the rendered terrain window. The bridge keeps `MAP_REGION_SIZE` in a stable range and recenters the rendered terrain ahead of the ego vehicle as it drives, so long straight-road tests do not require a huge terrain texture.
 
 ## Road Layout
 
@@ -84,12 +84,19 @@ traffic_density=0.0
 
 Increasing this value asks MetaDrive to create traffic vehicles, but it does not guarantee one vehicle will appear directly in front of the ego vehicle.
 
-For a deterministic front vehicle, add custom spawn logic in `metadrive_process.py` after `env.reset()`. The usual flow is:
+The bridge also supports a deterministic front vehicle. `metadrive_bridge.py` passes:
 
-1. Reset the environment.
-2. Read the ego vehicle's current lane.
-3. Spawn a traffic vehicle on the same lane at a larger longitude.
-4. Set the traffic vehicle to static or assign it an IDM policy.
+```python
+front_vehicle=dict(
+  enabled=True,
+  render_vehicle=True,
+  distance=FRONT_VEHICLE_DISTANCE,
+  target_speed_km_h=15.0,
+)
+enable_idm_lane_change=False
+```
+
+After each `env.reset()`, `metadrive_process.py` reads the ego vehicle's current lane, spawns one traffic vehicle ahead on the same lane, and assigns MetaDrive's `IDMPolicy` to it. IDM lane changes are disabled so the vehicle keeps driving on that lane. The front vehicle uses a low target speed by default so it remains visible longer during startup.
 
 Traffic vehicles also need full MetaDrive assets if `render_vehicle=True` is used for them.
 

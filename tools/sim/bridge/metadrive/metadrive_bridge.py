@@ -11,7 +11,10 @@ from openpilot.tools.sim.lib.camerad import W, H
 
 
 MAP_REGION_SIZE = 2048
-STRAIGHT_ROAD_LENGTH = 1000
+STRAIGHT_ROAD_LENGTH = 5000
+FRONT_VEHICLE_DISTANCE = 100.0
+TERRAIN_RECENTER_FORWARD_OFFSET = 500.0
+TERRAIN_RECENTER_THRESHOLD = 800.0
 
 
 def straight_block(length):
@@ -79,6 +82,15 @@ class MetaDriveBridge(SimulatorBridge):
       crash_object_done=False,
       arrive_dest_done=False,
       traffic_density=0.0, # traffic is incredibly expensive
+      front_vehicle=dict(
+        enabled=True,
+        render_vehicle=True,
+        distance=FRONT_VEHICLE_DISTANCE,
+        target_speed_km_h=33.0, # This is for the lead vehicle, not the ego. The ego speed is set by selfdrive/car/cruise.py: V_CRUISE_INITIAL = 56.32 (kph)
+      ),
+      enable_idm_lane_change=False,
+      terrain_recenter_forward_offset=TERRAIN_RECENTER_FORWARD_OFFSET,
+      terrain_recenter_threshold=TERRAIN_RECENTER_THRESHOLD,
       map_region_size=MAP_REGION_SIZE,
       map_config=create_map(),
       decision_repeat=1,
