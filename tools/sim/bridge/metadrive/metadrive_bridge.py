@@ -10,6 +10,10 @@ from openpilot.tools.sim.bridge.metadrive.metadrive_world import MetaDriveWorld
 from openpilot.tools.sim.lib.camerad import W, H
 
 
+MAP_REGION_SIZE = 2048
+STRAIGHT_ROAD_LENGTH = 1000
+
+
 def straight_block(length):
   return {
     "id": "S",
@@ -27,8 +31,7 @@ def curve_block(length, angle=45, direction=0):
     "dir": direction
   }
 
-def create_map(track_size=60):
-  curve_len = track_size * 2
+def create_map(track_size=STRAIGHT_ROAD_LENGTH):
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
     lane_num=2,
@@ -36,13 +39,6 @@ def create_map(track_size=60):
     config=[
       None,
       straight_block(track_size),
-      curve_block(curve_len, 90),
-      straight_block(track_size),
-      curve_block(curve_len, 90),
-      straight_block(track_size),
-      curve_block(curve_len, 90),
-      straight_block(track_size),
-      curve_block(curve_len, 90),
     ]
   )
 
@@ -53,7 +49,7 @@ class MetaDriveBridge(SimulatorBridge):
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False):
     super().__init__(dual_camera, high_quality)
 
-    self.should_render = False
+    self.should_render = True
     self.test_run = test_run
     self.test_duration = test_duration if self.test_run else math.inf
 
@@ -69,7 +65,7 @@ class MetaDriveBridge(SimulatorBridge):
       use_render=self.should_render,
       vehicle_config=dict(
         enable_reverse=False,
-        render_vehicle=False,
+        render_vehicle=True,
         image_source="rgb_road",
       ),
       sensors=sensors,
@@ -77,11 +73,13 @@ class MetaDriveBridge(SimulatorBridge):
       image_observation=True,
       interface_panel=[],
       out_of_route_done=False,
+      out_of_road_done=False,
       on_continuous_line_done=False,
       crash_vehicle_done=False,
       crash_object_done=False,
       arrive_dest_done=False,
       traffic_density=0.0, # traffic is incredibly expensive
+      map_region_size=MAP_REGION_SIZE,
       map_config=create_map(),
       decision_repeat=1,
       physics_world_step_size=self.TICKS_PER_FRAME/100,

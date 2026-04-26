@@ -10,6 +10,7 @@ from metadrive.engine.core.engine_core import EngineCore
 from metadrive.engine.core.image_buffer import ImageBuffer
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
+from metadrive.constants import TerrainProperty
 
 from openpilot.common.realtime import Ratekeeper
 
@@ -23,7 +24,7 @@ C3_HPR = Vec3(0, 0,0)
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
 metadrive_vehicle_state = namedtuple("metadrive_vehicle_state", ["velocity", "position", "bearing", "steering_angle"])
 
-def apply_metadrive_patches(arrive_dest_done=True):
+def apply_metadrive_patches(arrive_dest_done=True, out_of_road_done=True):
   # By default, metadrive won't try to use cuda images unless it's used as a sensor for vehicles, so patch that in
   def add_image_sensor_patched(self, name: str, cls, args):
     if self.global_config["image_on_cuda"]:# and name == self.global_config["vehicle_config"]["image_source"]:
@@ -45,14 +46,25 @@ def apply_metadrive_patches(arrive_dest_done=True):
   def arrive_destination_patch(self, *args, **kwargs):
     return False
 
+  def out_of_road_patch(self, *args, **kwargs):
+    return False
+
   if not arrive_dest_done:
     MetaDriveEnv._is_arrive_destination = arrive_destination_patch
+
+  if not out_of_road_done:
+    MetaDriveEnv._is_out_of_road = out_of_road_patch
 
 def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera_array, image_lock,
                       controls_recv: Connection, simulation_state_send: Connection, vehicle_state_send: Connection,
                       exit_event, op_engaged, test_duration, test_run):
   arrive_dest_done = config.pop("arrive_dest_done", True)
-  apply_metadrive_patches(arrive_dest_done)
+  out_of_road_done = config.pop("out_of_road_done", True)
+  map_region_size = config.pop("map_region_size", None)
+  if map_region_size is not None:
+    TerrainProperty.map_region_size = map_region_size
+
+  apply_metadrive_patches(arrive_dest_done, out_of_road_done)
 
   road_image = np.frombuffer(camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
   if dual_camera:
