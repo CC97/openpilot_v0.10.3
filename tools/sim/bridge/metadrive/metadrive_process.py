@@ -3,7 +3,7 @@ import time
 import numpy as np
 
 from collections import namedtuple
-from panda3d.core import Vec3
+from panda3d.core import Point2, Point3, Vec3
 from multiprocessing.connection import Connection
 
 from metadrive.engine.core.engine_core import EngineCore
@@ -16,6 +16,7 @@ from metadrive.policy.idm_policy import IDMPolicy
 
 from openpilot.common.realtime import Ratekeeper
 
+from openpilot.tools.sim.bridge.metadrive.lead_vehicle_attack import LeadVehiclePatchAttack
 from openpilot.tools.sim.lib.common import vec3
 from openpilot.tools.sim.lib.camerad import W, H
 
@@ -69,6 +70,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   out_of_road_done = config.pop("out_of_road_done", True)
   map_region_size = config.pop("map_region_size", None)
   front_vehicle_config = config.pop("front_vehicle", {})
+  lead_vehicle_attack_config = config.pop("lead_vehicle_attack", {})
+  lead_vehicle_bbox_debug_config = config.pop("lead_vehicle_bbox_debug", {})
   enable_idm_lane_change = config.pop("enable_idm_lane_change", True)
   terrain_recenter_forward_offset = config.pop("terrain_recenter_forward_offset", 0.0)
   terrain_recenter_threshold = config.pop("terrain_recenter_threshold", math.inf)
@@ -83,6 +86,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     wide_road_image = np.frombuffer(wide_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
 
   env = MetaDriveEnv(config)
+  lead_attack = LeadVehiclePatchAttack(lead_vehicle_attack_config)
   terrain_center = np.array([0.0, 0.0])
 
   def get_current_lane_info(vehicle):
@@ -264,10 +268,103 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       img = img.get() # convert cupy array to numpy
     return img
 
+  def get_front_vehicle_bbox():
+    if front_vehicle is None or "rgb_road" not in env.engine.sensors:
+      return None
+
+    cam = env.engine.sensors["rgb_road"]
+    cam_np = cam.get_cam()
+    cam_np.reparentTo(env.vehicle.origin)
+    cam_np.setPos(C3_POSITION)
+    cam_np.setHpr(C3_HPR)
+    lens = cam.get_lens()
+
+    points = []
+    for corner in get_front_vehicle_bbox_corners():
+      point_3d = cam_np.getRelativePoint(front_vehicle.origin, Point3(*corner))
+      point_2d = Point2()
+      if lens.project(point_3d, point_2d):
+        points.append((
+          (point_2d.x + 1.0) * 0.5 * W,
+          (1.0 - point_2d.y) * 0.5 * H,
+        ))
+
+    if not points:
+      return None
+
+    points = np.asarray(points)
+    x1 = int(np.floor(np.clip(points[:, 0].min(), 0, W - 1)))
+    y1 = int(np.floor(np.clip(points[:, 1].min(), 0, H - 1)))
+    x2 = int(np.ceil(np.clip(points[:, 0].max(), x1 + 1, W)))
+    y2 = int(np.ceil(np.clip(points[:, 1].max(), y1 + 1, H)))
+    return x1, y1, x2, y2
+
+  def get_front_vehicle_bbox_corners():
+    tight_bounds = None
+    try:
+      tight_bounds = front_vehicle.origin.getTightBounds(front_vehicle.origin)
+    except Exception:
+      tight_bounds = None
+
+    if tight_bounds is not None:
+      min_p, max_p = tight_bounds
+      if min_p is not None and max_p is not None:
+        return [
+          (x, y, z)
+          for x in (min_p.x, max_p.x)
+          for y in (min_p.y, max_p.y)
+          for z in (min_p.z, max_p.z)
+        ]
+
+    return [
+      (x, y, z)
+      for x in (-front_vehicle.WIDTH / 2.0, front_vehicle.WIDTH / 2.0)
+      for y in (-front_vehicle.LENGTH / 2.0, front_vehicle.LENGTH / 2.0)
+      for z in (0.0, front_vehicle.HEIGHT)
+    ]
+
+  def draw_front_vehicle_bbox(rgb, bbox):
+    if not lead_vehicle_bbox_debug_config.get("enabled", False) or bbox is None:
+      return rgb
+
+    out = rgb.copy()
+    height, width = out.shape[:2]
+    x1, y1, x2, y2 = bbox
+    x1 = int(np.clip(x1, 0, width - 1))
+    y1 = int(np.clip(y1, 0, height - 1))
+    x2 = int(np.clip(x2, x1 + 1, width))
+    y2 = int(np.clip(y2, y1 + 1, height))
+    thickness = max(1, int(lead_vehicle_bbox_debug_config.get("thickness", 8)))
+    color = np.array([0, 255, 0], dtype=np.uint8)
+
+    if lead_vehicle_bbox_debug_config.get("fill", False):
+      out[y1:y2, x1:x2] = color
+    else:
+      out[y1:min(y1 + thickness, y2), x1:x2] = color
+      out[max(y2 - thickness, y1):y2, x1:x2] = color
+      out[y1:y2, x1:min(x1 + thickness, x2)] = color
+      out[y1:y2, max(x2 - thickness, x1):x2] = color
+    return out
+
+  def save_bbox_debug_frame(rgb, bbox, frame_idx):
+    if not lead_vehicle_bbox_debug_config.get("enabled", False):
+      return
+
+    save_every = int(lead_vehicle_bbox_debug_config.get("save_every_n_frames", 0))
+    if save_every > 0 and frame_idx % save_every == 0:
+      import cv2
+      save_path = lead_vehicle_bbox_debug_config.get("save_path", "/tmp/metadrive_lead_bbox_debug.png")
+      cv2.imwrite(save_path, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+
+    log_every = int(lead_vehicle_bbox_debug_config.get("log_every_n_frames", 0))
+    if log_every > 0 and frame_idx % log_every == 0:
+      print(f"MetaDrive lead bbox debug frame={frame_idx} bbox={bbox}", flush=True)
+
   rk = Ratekeeper(100, None)
 
   steer_ratio = 8
   vc = [0,0]
+  camera_frame_idx = 0
 
   while not exit_event.is_set():
     vehicle_state = metadrive_vehicle_state(
@@ -326,7 +423,14 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
 
       if dual_camera:
         wide_road_image[...] = get_cam_as_rgb("rgb_wide")
-      road_image[...] = get_cam_as_rgb("rgb_road")
+      road_rgb = get_cam_as_rgb("rgb_road")
+      lead_bbox = get_front_vehicle_bbox()
+      if lead_attack.config.enabled:
+        road_rgb = lead_attack.apply(road_rgb, lead_bbox)
+      road_rgb = draw_front_vehicle_bbox(road_rgb, lead_bbox)
+      camera_frame_idx += 1
+      save_bbox_debug_frame(road_rgb, lead_bbox, camera_frame_idx)
+      road_image[...] = road_rgb
       image_lock.release()
 
     rk.keep_time()

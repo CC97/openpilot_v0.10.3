@@ -52,13 +52,13 @@ class MetaDriveBridge(SimulatorBridge):
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False):
     super().__init__(dual_camera, high_quality)
 
-    self.should_render = True
+    self.should_render = False
     self.test_run = test_run
     self.test_duration = test_duration if self.test_run else math.inf
 
   def spawn_world(self, queue: Queue):
     sensors = {
-      "rgb_road": (RGBCameraRoad, W, H, )
+      "rgb_road": (RGBCameraRoad, W, H, ),
     }
 
     if self.dual_camera:
@@ -88,6 +88,22 @@ class MetaDriveBridge(SimulatorBridge):
         distance=FRONT_VEHICLE_DISTANCE,
         wait_for_engaged=True,
         target_speed_km_h=33.0, # This is for the lead vehicle, not the ego. The ego speed is set by selfdrive/car/cruise.py: V_CRUISE_INITIAL = 56.32 (kph)
+      ),
+      lead_vehicle_attack=dict(
+        enabled=True,
+        device="auto",
+        mask_iterations=5,
+        optimize_every_n_frames=20,
+        thres=8.0,
+        lr=1.0,
+      ),
+      lead_vehicle_bbox_debug=dict(
+        enabled=False,
+        fill=True,
+        thickness=8,
+        save_path="/tmp/metadrive_lead_bbox_debug.png",
+        save_every_n_frames=0,
+        log_every_n_frames=20,
       ),
       enable_idm_lane_change=False,
       terrain_recenter_forward_offset=TERRAIN_RECENTER_FORWARD_OFFSET,
