@@ -86,6 +86,7 @@ class MetaDriveBridge(SimulatorBridge):
         enabled=True,
         render_vehicle=True,
         distance=FRONT_VEHICLE_DISTANCE,
+        wait_for_engaged=True,
         target_speed_km_h=33.0, # This is for the lead vehicle, not the ego. The ego speed is set by selfdrive/car/cruise.py: V_CRUISE_INITIAL = 56.32 (kph)
       ),
       enable_idm_lane_change=False,

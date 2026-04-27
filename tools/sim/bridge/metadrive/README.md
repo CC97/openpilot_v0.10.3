@@ -91,12 +91,14 @@ front_vehicle=dict(
   enabled=True,
   render_vehicle=True,
   distance=FRONT_VEHICLE_DISTANCE,
+  wait_for_engaged=True,
   target_speed_km_h=15.0,
 )
 enable_idm_lane_change=False
 ```
 
 After each `env.reset()`, `metadrive_process.py` reads the ego vehicle's current lane, spawns one traffic vehicle ahead on the same lane, and assigns MetaDrive's `IDMPolicy` to it. IDM lane changes are disabled so the vehicle keeps driving on that lane. The front vehicle uses a low target speed by default so it remains visible longer during startup.
+If `wait_for_engaged=True`, the front vehicle holds position until openpilot first becomes engaged, then IDM takes over.
 
 Traffic vehicles also need full MetaDrive assets if `render_vehicle=True` is used for them.
 

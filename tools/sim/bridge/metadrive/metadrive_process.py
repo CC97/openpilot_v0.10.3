@@ -19,7 +19,7 @@ from openpilot.common.realtime import Ratekeeper
 from openpilot.tools.sim.lib.common import vec3
 from openpilot.tools.sim.lib.camerad import W, H
 
-C3_POSITION = Vec3(0.0, 0, 1.22)
+C3_POSITION = Vec3(0.0, 0.8, 1.13)
 C3_HPR = Vec3(0, 0,0)
 
 
@@ -92,6 +92,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
 
   front_vehicle = None
   front_vehicle_policy = None
+  front_vehicle_started = False
   last_ground_truth_log_time = 0.0
 
   def get_route_lane_ahead(distance):
@@ -121,7 +122,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     return None, None
 
   def spawn_front_vehicle():
-    nonlocal front_vehicle, front_vehicle_policy
+    nonlocal front_vehicle, front_vehicle_policy, front_vehicle_started
 
     if not front_vehicle_config.get("enabled", False):
       return
@@ -151,10 +152,19 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       front_vehicle.id, IDMPolicy, front_vehicle, traffic_manager.generate_seed()
     )
     front_vehicle_policy.target_speed = front_vehicle_config.get("target_speed_km_h", front_vehicle_policy.target_speed)
+    front_vehicle_started = not front_vehicle_config.get("wait_for_engaged", False)
 
   def step_front_vehicle():
+    nonlocal front_vehicle_started
+
     if front_vehicle is None or front_vehicle_policy is None:
       return
+
+    if not front_vehicle_started:
+      if not op_engaged.is_set():
+        front_vehicle.before_step([0.0, -1.0])
+        return
+      front_vehicle_started = True
 
     front_vehicle.before_step(front_vehicle_policy.act())
 
@@ -218,10 +228,11 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     )
 
   def reset():
-    nonlocal front_vehicle, front_vehicle_policy, terrain_center, last_ground_truth_log_time
+    nonlocal front_vehicle, front_vehicle_policy, front_vehicle_started, terrain_center, last_ground_truth_log_time
 
     front_vehicle = None
     front_vehicle_policy = None
+    front_vehicle_started = False
     terrain_center = np.array([0.0, 0.0])
     last_ground_truth_log_time = 0.0
     env.reset()
